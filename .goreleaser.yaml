@@ -14,7 +14,8 @@ before:
     # - go generate ./...
 
 builds:
-  - main: ./
+  - id: build
+    main: ./
     ldflags:
       - -s -w
       - -X main.Version={{.Version}}
@@ -23,6 +24,14 @@ builds:
     goos:
       - linux
       - windows
+  - id: darwin-build
+    main: ./
+    ldflags:
+      - -s -w
+      - -X main.Version={{.Version}}
+    env:
+      - CGO_ENABLED=1
+    goos:
       - darwin
 
 archives:
