@@ -7,21 +7,26 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"time"
 
 	"github.com/redis/go-redis/v9"
+	"github.com/rs/xid"
 	"github.com/urfave/cli/v2"
 	"golang.design/x/clipboard"
 )
 
 type (
 	Msg struct {
-		Format  clipboard.Format
-		Payload string
+		Format   clipboard.Format
+		Payload  string
+		CopiedBy string
+		CopiedAt time.Time
 	}
 )
 
 var rdb *redis.Client
 var lastMsg Msg = Msg{}
+var copiedBy string
 var Version string
 
 func main() {
@@ -89,6 +94,8 @@ func run(c *cli.Context) error {
 		panic(err)
 	}
 
+	copiedBy = xid.New().String()
+
 	go watchClip(c)
 	watchRedis(c)
 
@@ -107,16 +114,20 @@ func watchClip(c *cli.Context) {
 			}
 
 			msg = Msg{
-				clipboard.FmtText,
-				hex.EncodeToString(b),
+				Format:   clipboard.FmtText,
+				Payload:  hex.EncodeToString(b),
+				CopiedBy: copiedBy,
+				CopiedAt: time.Now(),
 			}
 		case b, _ := <-ch2:
 			if c.Bool("verbose") {
 				fmt.Println("copy: [IMAGE]")
 			}
 			msg = Msg{
-				clipboard.FmtImage,
-				hex.EncodeToString(b),
+				Format:   clipboard.FmtImage,
+				Payload:  hex.EncodeToString(b),
+				CopiedBy: copiedBy,
+				CopiedAt: time.Now(),
 			}
 		}
 
@@ -139,6 +150,16 @@ func watchRedis(c *cli.Context) {
 	msg := Msg{}
 	for rMsg := range ch {
 		if err := json.Unmarshal([]byte(rMsg.Payload), &msg); err == nil {
+			if msg.CopiedBy == copiedBy {
+				fmt.Printf("-> paste: skipped\n")
+				continue
+			}
+
+			if msg.Format == clipboard.FmtImage && msg.CopiedAt.After(time.Now().Add(-3*time.Second)) {
+				fmt.Printf("-> paste: skipped\n")
+				continue
+			}
+
 			if lastMsg.Format != msg.Format || lastMsg.Payload != msg.Payload {
 				lastMsg = msg
 				if decoded, err := hex.DecodeString(msg.Payload); err == nil {
