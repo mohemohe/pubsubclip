@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
-	"github.com/rs/xid"
+	// "github.com/rs/xid"
 	"github.com/urfave/cli/v2"
 	"golang.design/x/clipboard"
 )
@@ -94,7 +94,14 @@ func run(c *cli.Context) error {
 		panic(err)
 	}
 
-	copiedBy = xid.New().String()
+	// copiedBy = xid.New().String()
+	if hostname, err := os.Hostname(); err == nil {
+		copiedBy = hostname
+	} else {
+		panic(err)
+	}
+
+	fmt.Printf("start pubsubclip: %s\n", copiedBy)
 
 	go watchClip(c)
 	watchRedis(c)
@@ -131,15 +138,22 @@ func watchClip(c *cli.Context) {
 			}
 		}
 
+		if lastMsg.Format == clipboard.FmtImage && time.Now().Before(lastMsg.CopiedAt.Add(3*time.Second)) {
+			fmt.Printf("-> publish: skipped (too early)\n")
+			lastMsg = msg
+			continue
+		}
+
 		if lastMsg.Format != msg.Format || lastMsg.Payload != msg.Payload {
 			lastMsg = msg
 			if b, err := json.Marshal(msg); err == nil {
 				rdb.Publish(context.TODO(), c.String("channel"), string(b))
+				fmt.Printf("-> publish: OK\n")
 			} else {
 				fmt.Printf("json marshal error: %v\n", err)
 			}
 		} else if c.Bool("verbose") {
-			fmt.Printf("-> copy: skipped\n")
+			fmt.Printf("-> publish: skipped (same payload)\n")
 		}
 	}
 }
@@ -151,12 +165,12 @@ func watchRedis(c *cli.Context) {
 	for rMsg := range ch {
 		if err := json.Unmarshal([]byte(rMsg.Payload), &msg); err == nil {
 			if msg.CopiedBy == copiedBy {
-				fmt.Printf("-> paste: skipped\n")
 				continue
 			}
 
-			if msg.Format == clipboard.FmtImage && msg.CopiedAt.After(time.Now().Add(-3*time.Second)) {
-				fmt.Printf("-> paste: skipped\n")
+			if msg.Format == clipboard.FmtImage && lastMsg.Format == clipboard.FmtImage && msg.CopiedAt.Before(lastMsg.CopiedAt.Add(3*time.Second)) {
+				fmt.Println("paste: [IMAGE]")
+				fmt.Printf("-> write: skipped (too early)\n")
 				continue
 			}
 
@@ -175,7 +189,7 @@ func watchRedis(c *cli.Context) {
 					fmt.Printf("error: %v\n", err)
 				}
 			} else if c.Bool("verbose") {
-				fmt.Printf("-> paste: skipped\n")
+				fmt.Printf("-> write: skipped (same payload)\n")
 			}
 		} else {
 			fmt.Printf("json unmarshal error: %v\n", err)
