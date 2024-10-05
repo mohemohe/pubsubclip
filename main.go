@@ -169,7 +169,7 @@ func watchRedis(c *cli.Context) {
 			}
 
 			if msg.Format == clipboard.FmtImage && lastMsg.Format == clipboard.FmtImage && msg.CopiedAt.Before(lastMsg.CopiedAt.Add(3*time.Second)) {
-				fmt.Println("paste: [IMAGE]")
+				fmt.Printf("paste: [IMAGE] from %s\n", msg.CopiedBy)
 				fmt.Printf("-> write: skipped (too early)\n")
 				continue
 			}
@@ -179,9 +179,9 @@ func watchRedis(c *cli.Context) {
 				if decoded, err := hex.DecodeString(msg.Payload); err == nil {
 					if c.Bool("verbose") {
 						if msg.Format == clipboard.FmtText {
-							fmt.Printf("paste: %s\n", string(decoded))
+							fmt.Printf("paste: %s from %s\n", string(decoded), msg.CopiedBy)
 						} else if msg.Format == clipboard.FmtImage {
-							fmt.Println("paste: [IMAGE]")
+							fmt.Printf("paste: [IMAGE] from %s\n", msg.CopiedBy)
 						}
 					}
 					clipboard.Write(msg.Format, decoded)
