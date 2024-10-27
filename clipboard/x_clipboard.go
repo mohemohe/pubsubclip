@@ -54,26 +54,24 @@ func Watch(c *cli.Context, copiedBy string) chan Msg {
 				}
 			}
 
-			if LastClipboardContent == nil {
-				LastClipboardContent = &msg
-				continue
-			}
-
-			if !LastClipboardContent.ContentEqual(msg) {
-				LastClipboardContent = &msg
+			shuldSend := !LastClipboardContent.ContentEqual(msg)
+			LastClipboardContent = msg
+			if shuldSend {
 				ch3 <- msg
+			} else if c.Bool("verbose") {
+				fmt.Printf("-> copy: skipped (same payload)\n")
 			}
 		}
 	}()
 	return ch3
 }
 
-func Write(msg Msg, data []byte) error {
-	if LastClipboardContent.ContentEqual(msg) {
+func Write(c *cli.Context, msg Msg, data []byte) error {
+	if msg.ContentEqual(LastClipboardContent) {
 		fmt.Printf("-> write: skipped (same payload)\n")
 		return nil
 	}
-	LastClipboardContent = &msg
+	LastClipboardContent = msg
 
 	switch msg.Format {
 	case FormatText:
@@ -82,6 +80,10 @@ func Write(msg Msg, data []byte) error {
 		clipboard.Write(clipboard.FmtImage, data)
 	default:
 		return fmt.Errorf("format error: %s", msg.Format)
+	}
+
+	if c.Bool("verbose") {
+		fmt.Printf("-> write: OK\n")
 	}
 
 	return nil

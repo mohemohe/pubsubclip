@@ -18,11 +18,13 @@ const (
 	FormatImage          = "image"
 )
 
-func (msg1 *Msg) ContentEqual(msg2 Msg) bool {
-	if msg1.Format != msg2.Format || msg1.Payload != msg2.Payload {
-		return false
-	}
-	return true
+func (msg1 Msg) ContentEqual(msg2 Msg) bool {
+	return msg1.Format == msg2.Format && msg1.Payload == msg2.Payload
 }
 
-var LastClipboardContent *Msg
+var LastClipboardContent = Msg{
+	Format:   FormatUnknown,
+	Payload:  "",
+	CopiedBy: "",
+	CopiedAt: time.Now(),
+}

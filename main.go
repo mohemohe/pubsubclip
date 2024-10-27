@@ -97,13 +97,16 @@ func run(c *cli.Context) error {
 func watchClip(c *cli.Context) {
 	ch := clipboard.Watch(c, copiedBy)
 	msg := clipboard.Msg{}
+	lastPublishAt := time.Unix(0, 0)
 	for {
 		msg = <-ch
 
-		if clipboard.LastClipboardContent.Format == clipboard.FormatImage && time.Now().Before(clipboard.LastClipboardContent.CopiedAt.Add(3*time.Second)) {
+		if clipboard.LastClipboardContent.Format == clipboard.FormatImage && lastPublishAt.After(msg.CopiedAt.Add(3*time.Second)) {
 			fmt.Printf("-> publish: skipped (too early)\n")
 			continue
 		}
+
+		lastPublishAt = time.Now()
 
 		if b, err := json.Marshal(msg); err == nil {
 			rdb.Publish(context.TODO(), c.String("channel"), string(b))
@@ -117,7 +120,8 @@ func watchClip(c *cli.Context) {
 func watchRedis(c *cli.Context) {
 	s := rdb.Subscribe(context.TODO(), c.String("channel"))
 	ch := s.Channel()
-	msg := clipboard.Msg{}
+	var msg clipboard.Msg
+	var lastSendMsg clipboard.Msg
 	for rMsg := range ch {
 		if err := json.Unmarshal([]byte(rMsg.Payload), &msg); err == nil {
 			if msg.CopiedBy == copiedBy {
@@ -127,11 +131,17 @@ func watchRedis(c *cli.Context) {
 				continue
 			}
 
-			if msg.Format == clipboard.FormatImage && clipboard.LastClipboardContent.Format == clipboard.FormatImage && msg.CopiedAt.Before(clipboard.LastClipboardContent.CopiedAt.Add(3*time.Second)) {
+			println(msg.Format, clipboard.FormatImage)
+			println(lastSendMsg.Format, clipboard.FormatImage)
+			println(msg.CopiedAt.Format(time.RFC3339), lastSendMsg.CopiedAt.Add(3*time.Second).Format(time.RFC3339))
+
+			if msg.Format == clipboard.FormatImage && lastSendMsg.Format == clipboard.FormatImage && msg.CopiedAt.Before(lastSendMsg.CopiedAt.Add(3*time.Second)) {
 				fmt.Printf("paste: [IMAGE] from %s\n", msg.CopiedBy)
 				fmt.Printf("-> write: skipped (too early)\n")
 				continue
 			}
+
+			lastSendMsg = msg
 
 			if decoded, err := hex.DecodeString(msg.Payload); err == nil {
 				if c.Bool("verbose") {
@@ -141,7 +151,7 @@ func watchRedis(c *cli.Context) {
 						fmt.Printf("paste: [IMAGE] from %s\n", msg.CopiedBy)
 					}
 				}
-				clipboard.Write(msg, decoded)
+				clipboard.Write(c, msg, decoded)
 			} else {
 				fmt.Printf("error: %v\n", err)
 			}

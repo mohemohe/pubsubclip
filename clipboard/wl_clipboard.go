@@ -54,11 +54,6 @@ func Watch(c *cli.Context, copiedBy string) chan Msg {
 				CopiedAt: time.Now(),
 			}
 
-			if LastClipboardContent == nil {
-				LastClipboardContent = &msg
-				continue
-			}
-
 			shouldSend := false
 			if !LastClipboardContent.ContentEqual(msg) {
 				if c.Bool("verbose") {
@@ -72,9 +67,11 @@ func Watch(c *cli.Context, copiedBy string) chan Msg {
 
 				shouldSend = true
 			}
-			LastClipboardContent = &msg
+			LastClipboardContent = msg
 			if shouldSend {
 				ch <- msg
+			} else if c.Bool("verbose") {
+				fmt.Printf("-> copy: skipped (same payload)\n")
 			}
 		}
 	}()
@@ -120,12 +117,12 @@ func getData(mimeType string) ([]byte, error) {
 	return out.Bytes(), nil
 }
 
-func Write(msg Msg, data []byte) error {
+func Write(c *cli.Context, msg Msg, data []byte) error {
 	if LastClipboardContent.ContentEqual(msg) {
 		fmt.Printf("-> write: skipped (same payload)\n")
 		return nil
 	}
-	LastClipboardContent = &msg
+	LastClipboardContent = msg
 
 	var cmd *exec.Cmd
 
@@ -143,6 +140,10 @@ func Write(msg Msg, data []byte) error {
 
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("clipboard write error: %w", err)
+	}
+
+	if c.Bool("verbose") {
+		fmt.Printf("-> write: OK\n")
 	}
 
 	return nil
