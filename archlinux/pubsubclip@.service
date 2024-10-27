@@ -4,6 +4,7 @@ After=network.target
 
 [Service]
 Type=simple
+User=%i
 ExecStart=/usr/bin/pubsubclip $PUBSUBCLIP_ARGS
 EnvironmentFile=/etc/default/pubsubclip
 Restart=on-failure

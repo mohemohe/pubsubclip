@@ -22,7 +22,7 @@ package() {
   install -Dm755 "${pkgname}" "$pkgdir/usr/bin/${pkgname}"
 
   # Systemd unit file installation
-  install -Dm644 "$srcdir/$pkgname/archlinux/pubsubclip.service" "$pkgdir/usr/lib/systemd/system/pubsubclip.service"
+  install -Dm644 "$srcdir/$pkgname/archlinux/pubsubclip@.service" "$pkgdir/usr/lib/systemd/system/pubsubclip@.service"
 
   # Default environment file installation
   install -Dm644 "$srcdir/$pkgname/archlinux/pubsubclip.default" "$pkgdir/etc/default/pubsubclip"
