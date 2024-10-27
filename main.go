@@ -9,23 +9,14 @@ import (
 	"os"
 	"time"
 
+	"github.com/mohemohe/pubsubclip/clipboard"
 	"github.com/redis/go-redis/v9"
 	// "github.com/rs/xid"
 	"github.com/urfave/cli/v2"
-	"golang.design/x/clipboard"
-)
-
-type (
-	Msg struct {
-		Format   clipboard.Format
-		Payload  string
-		CopiedBy string
-		CopiedAt time.Time
-	}
 )
 
 var rdb *redis.Client
-var lastMsg Msg = Msg{}
+var lastMsg clipboard.Msg = clipboard.Msg{}
 var copiedBy string
 var Version string
 
@@ -79,10 +70,7 @@ func main() {
 }
 
 func run(c *cli.Context) error {
-	err := clipboard.Init()
-	if err != nil {
-		panic(err)
-	}
+	_ = clipboard.Check()
 
 	rdb = redis.NewClient(&redis.Options{
 		Addr:     c.String("addr"),
@@ -110,35 +98,12 @@ func run(c *cli.Context) error {
 }
 
 func watchClip(c *cli.Context) {
-	ch1 := clipboard.Watch(context.TODO(), clipboard.FmtText)
-	ch2 := clipboard.Watch(context.TODO(), clipboard.FmtImage)
-	var msg = Msg{}
+	ch := clipboard.Watch(c, copiedBy)
+	msg := clipboard.Msg{}
 	for {
-		select {
-		case b, _ := <-ch1:
-			if c.Bool("verbose") {
-				fmt.Printf("copy: %s\n", string(b))
-			}
+		msg = <-ch
 
-			msg = Msg{
-				Format:   clipboard.FmtText,
-				Payload:  hex.EncodeToString(b),
-				CopiedBy: copiedBy,
-				CopiedAt: time.Now(),
-			}
-		case b, _ := <-ch2:
-			if c.Bool("verbose") {
-				fmt.Println("copy: [IMAGE]")
-			}
-			msg = Msg{
-				Format:   clipboard.FmtImage,
-				Payload:  hex.EncodeToString(b),
-				CopiedBy: copiedBy,
-				CopiedAt: time.Now(),
-			}
-		}
-
-		if lastMsg.Format == clipboard.FmtImage && time.Now().Before(lastMsg.CopiedAt.Add(3*time.Second)) {
+		if lastMsg.Format == clipboard.FormatImage && time.Now().Before(lastMsg.CopiedAt.Add(3*time.Second)) {
 			fmt.Printf("-> publish: skipped (too early)\n")
 			lastMsg = msg
 			continue
@@ -161,14 +126,17 @@ func watchClip(c *cli.Context) {
 func watchRedis(c *cli.Context) {
 	s := rdb.Subscribe(context.TODO(), c.String("channel"))
 	ch := s.Channel()
-	msg := Msg{}
+	msg := clipboard.Msg{}
 	for rMsg := range ch {
 		if err := json.Unmarshal([]byte(rMsg.Payload), &msg); err == nil {
 			if msg.CopiedBy == copiedBy {
+				if c.Bool("verbose") {
+					fmt.Printf("paste: from %s, skipped (copied by myself)\n", msg.CopiedBy)
+				}
 				continue
 			}
 
-			if msg.Format == clipboard.FmtImage && lastMsg.Format == clipboard.FmtImage && msg.CopiedAt.Before(lastMsg.CopiedAt.Add(3*time.Second)) {
+			if msg.Format == clipboard.FormatImage && lastMsg.Format == clipboard.FormatImage && msg.CopiedAt.Before(lastMsg.CopiedAt.Add(3*time.Second)) {
 				fmt.Printf("paste: [IMAGE] from %s\n", msg.CopiedBy)
 				fmt.Printf("-> write: skipped (too early)\n")
 				continue
@@ -178,9 +146,9 @@ func watchRedis(c *cli.Context) {
 				lastMsg = msg
 				if decoded, err := hex.DecodeString(msg.Payload); err == nil {
 					if c.Bool("verbose") {
-						if msg.Format == clipboard.FmtText {
+						if msg.Format == clipboard.FormatText {
 							fmt.Printf("paste: %s from %s\n", string(decoded), msg.CopiedBy)
-						} else if msg.Format == clipboard.FmtImage {
+						} else if msg.Format == clipboard.FormatImage {
 							fmt.Printf("paste: [IMAGE] from %s\n", msg.CopiedBy)
 						}
 					}
