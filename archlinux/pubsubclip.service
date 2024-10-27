@@ -1,0 +1,12 @@
+[Unit]
+Description=publish / subscribe clipboard via redis. supports text and image
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/pubsubclip $PUBSUBCLIP_ARGS
+EnvironmentFile=/etc/default/pubsubclip
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

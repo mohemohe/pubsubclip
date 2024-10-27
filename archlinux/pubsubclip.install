@@ -1,0 +1,7 @@
+post_install() {
+    echo '----------------------------------------------------------------------'
+    echo 'To configure pubsubclip, please edit the /etc/default/pubsubclip file.'
+    echo 'Set the appropriate arguments for your application, like so:'
+    echo 'PUBSUBCLIP_ARGS="watch --addr 172.16.34.200:6379"'
+    echo '----------------------------------------------------------------------'
+}
