@@ -4,10 +4,10 @@ import "time"
 
 type (
 	Msg struct {
-		Format   Format
-		Payload  string
-		CopiedBy string
-		CopiedAt time.Time
+		Format   Format    `json:"format"`
+		Payload  string    `json:"payload"`
+		CopiedBy string    `json:"copied_by"`
+		CopiedAt time.Time `json:"copied_at"`
 	}
 	Format string
 )

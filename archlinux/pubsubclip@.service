@@ -4,7 +4,11 @@ After=network.target
 
 [Service]
 Type=simple
+User=%i
+ExecStartPre=/bin/sh -c 'echo "XDG_RUNTIME_DIR=/run/user/$(id -u %i)" > /tmp/pubsubclip.%i.env'
 ExecStart=/usr/bin/pubsubclip $PUBSUBCLIP_ARGS
+ExecStopPost=/bin/sh -c 'rm -f /tmp/pubsubclip.%i.env'
+EnvironmentFile=-/tmp/pubsubclip.%i.env
 EnvironmentFile=/etc/default/pubsubclip
 Restart=on-failure
 

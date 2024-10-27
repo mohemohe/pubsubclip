@@ -152,7 +152,7 @@ func watchRedis(c *cli.Context) {
 				fmt.Printf("error: %v\n", err)
 			}
 		} else {
-			fmt.Printf("json unmarshal error: %v\n", err)
+			fmt.Printf("json unmarshal error: %v payload: %s\n", err, rMsg.Payload)
 		}
 	}
 }
