@@ -82,14 +82,17 @@ func Watch(c *cli.Context, copiedBy string) chan Msg {
 
 func checkFormat() (format Format, mimeType string, err error) {
 	cmd := exec.Command("wl-paste", "--list-types")
-	var out bytes.Buffer
-	cmd.Stdout = &out
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
 
 	if err := cmd.Run(); err != nil {
+		fmt.Println(stderr.String())
 		return FormatUnknown, "", fmt.Errorf("'wl-paste --list-types' error: %w", err)
 	}
 
-	mimeTypes := strings.Split(out.String(), "\n")
+	mimeTypes := strings.Split(stderr.String(), "\n")
 	hasText := false
 	for _, mimeType := range mimeTypes {
 		mimeType = strings.TrimSpace(mimeType)

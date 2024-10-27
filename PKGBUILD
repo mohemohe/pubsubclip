@@ -9,7 +9,7 @@ license=('WTFPL')
 depends=("wl-clipboard")
 makedepends=('go' 'git')
 install="archlinux/pubsubclip.install"
-source=("git+https://github.com/mohemohe/pubsubclip.git")
+source=("git+https://github.com/mohemohe/pubsubclip.git#branch=develop")
 sha256sums=('SKIP')
 
 build() {
