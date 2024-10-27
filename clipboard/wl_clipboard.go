@@ -28,6 +28,7 @@ func Check() bool {
 func Watch(c *cli.Context, copiedBy string) chan Msg {
 	ch := make(chan Msg)
 	ticker := time.NewTicker(500 * time.Millisecond)
+	skipInitial := true
 
 	go func() {
 		defer ticker.Stop()
@@ -68,11 +69,11 @@ func Watch(c *cli.Context, copiedBy string) chan Msg {
 				shouldSend = true
 			}
 			LastClipboardContent = msg
-			if shouldSend {
+			if shouldSend && !skipInitial {
 				ch <- msg
-			} else if c.Bool("verbose") {
-				fmt.Printf("-> copy: skipped (same payload)\n")
 			}
+
+			skipInitial = false
 		}
 	}()
 
