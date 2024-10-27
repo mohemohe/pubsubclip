@@ -131,10 +131,6 @@ func watchRedis(c *cli.Context) {
 				continue
 			}
 
-			println(msg.Format, clipboard.FormatImage)
-			println(lastSendMsg.Format, clipboard.FormatImage)
-			println(msg.CopiedAt.Format(time.RFC3339), lastSendMsg.CopiedAt.Add(3*time.Second).Format(time.RFC3339))
-
 			if msg.Format == clipboard.FormatImage && lastSendMsg.Format == clipboard.FormatImage && msg.CopiedAt.Before(lastSendMsg.CopiedAt.Add(3*time.Second)) {
 				fmt.Printf("paste: [IMAGE] from %s\n", msg.CopiedBy)
 				fmt.Printf("-> write: skipped (too early)\n")
