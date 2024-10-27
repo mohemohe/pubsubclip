@@ -1,4 +1,4 @@
-# Maintainer: Your Name <youremail@example.com>
+# Maintainer: mohemohe <mohemohe@ghippos.net>
 pkgname=pubsubclip
 pkgver=git
 pkgrel=1
@@ -9,7 +9,7 @@ license=('WTFPL')
 depends=("wl-clipboard")
 makedepends=('go' 'git')
 install="archlinux/pubsubclip.install"
-source=("git+https://github.com/mohemohe/pubsubclip.git#branch=develop")
+source=("git+https://github.com/mohemohe/pubsubclip.git")
 sha256sums=('SKIP')
 
 build() {
