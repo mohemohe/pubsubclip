@@ -26,93 +26,117 @@ func Check() bool {
 }
 
 func Watch(c *cli.Context, copiedBy string) chan Msg {
-	msgChan := make(chan Msg)
+	ch := make(chan Msg)
 	ticker := time.NewTicker(500 * time.Millisecond)
 
 	go func() {
 		defer ticker.Stop()
 
-		var lastClipboardContent []byte
-
 		for range ticker.C {
-			format, err := checkFormat()
+			format, mimeType, err := checkFormat()
 			if err != nil {
 				fmt.Printf("error: %v\n", err)
 				continue
 			}
-			data, err := getData()
+			if format == FormatUnknown {
+				continue
+			}
+			data, err := getData(mimeType)
 			if err != nil {
 				fmt.Printf("error: %v\n", err)
 				continue
 			}
 
-			if lastClipboardContent == nil {
-				lastClipboardContent = data
+			msg := Msg{
+				Format:   format,
+				Payload:  hex.EncodeToString(data),
+				CopiedBy: copiedBy,
+				CopiedAt: time.Now(),
+			}
+
+			if LastClipboardContent == nil {
+				LastClipboardContent = &msg
 				continue
 			}
 
-			if bytes.Compare(lastClipboardContent, data) != 0 {
-				msg := Msg{
-					Format:   format,
-					Payload:  hex.EncodeToString(data),
-					CopiedBy: copiedBy,
-					CopiedAt: time.Now(),
+			shouldSend := false
+			if !LastClipboardContent.ContentEqual(msg) {
+				if c.Bool("verbose") {
+					if format == FormatText {
+						fmt.Printf("copy: %s\n", string(data))
+					}
+					if format == FormatImage {
+						fmt.Println("copy: [IMAGE]")
+					}
 				}
-				lastClipboardContent = data
 
-				msgChan <- msg
+				shouldSend = true
+			}
+			LastClipboardContent = &msg
+			if shouldSend {
+				ch <- msg
 			}
 		}
 	}()
 
-	return msgChan
+	return ch
 }
 
-func checkFormat() (format Format, err error) {
+func checkFormat() (format Format, mimeType string, err error) {
 	cmd := exec.Command("wl-paste", "--list-types")
 	var out bytes.Buffer
 	cmd.Stdout = &out
 
 	if err := cmd.Run(); err != nil {
-		return FormatUnknown, fmt.Errorf("'wl-paste --list-types' error: %w", err)
+		return FormatUnknown, "", fmt.Errorf("'wl-paste --list-types' error: %w", err)
 	}
 
 	mimeTypes := strings.Split(out.String(), "\n")
+	hasText := false
 	for _, mimeType := range mimeTypes {
 		mimeType = strings.TrimSpace(mimeType)
 		if mimeType == "text/plain" {
-			return FormatText, nil
+			hasText = true
 		} else if strings.HasPrefix(mimeType, "image/") {
-			return FormatImage, nil
+			return FormatImage, mimeType, nil
 		}
 	}
+	if hasText {
+		return FormatText, "text/plain", nil
+	}
 
-	return FormatUnknown, nil
+	return FormatUnknown, "", nil
 }
 
-func getData() ([]byte, error) {
-	cmd := exec.Command("wl-paste", "--no-newline")
+func getData(mimeType string) ([]byte, error) {
+	cmd := exec.Command("wl-paste", "--no-newline", "--type", mimeType)
 	var out bytes.Buffer
 	cmd.Stdout = &out
 
 	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("clipboard image copy error: %w", err)
+		return nil, fmt.Errorf("clipboard copy error: %w", err)
 	}
 
 	return out.Bytes(), nil
 }
 
-func Write(format Format, data []byte) error {
+func Write(msg Msg, data []byte) error {
+	if LastClipboardContent.ContentEqual(msg) {
+		fmt.Printf("-> write: skipped (same payload)\n")
+		return nil
+	}
+	LastClipboardContent = &msg
+
 	var cmd *exec.Cmd
 
-	switch format {
+	switch msg.Format {
 	case FormatText:
 		cmd = exec.Command("wl-copy", "--type", "text/plain")
 	case FormatImage:
 		contentType := http.DetectContentType(data)
 		cmd = exec.Command("wl-copy", "--type", contentType)
 	default:
-		return fmt.Errorf("format error: %d", format)
+		return fmt.Errorf("format error: %s", msg.Format)
 	}
 
 	cmd.Stdin = bytes.NewReader(data)

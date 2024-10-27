@@ -53,19 +53,36 @@ func Watch(c *cli.Context, copiedBy string) chan Msg {
 					CopiedAt: time.Now(),
 				}
 			}
-			ch3 <- msg
+
+			if LastClipboardContent == nil {
+				LastClipboardContent = &msg
+				continue
+			}
+
+			if !LastClipboardContent.ContentEqual(msg) {
+				LastClipboardContent = &msg
+				ch3 <- msg
+			}
 		}
 	}()
 	return ch3
 }
 
-func Write(format Format, data []byte) error {
-	if format == FormatText {
-		clipboard.Write(clipboard.FmtText, data)
-	} else if format == FormatImage {
-		clipboard.Write(clipboard.FmtImage, data)
-	} else {
-		return fmt.Errorf("format error: %d", format)
+func Write(msg Msg, data []byte) error {
+	if LastClipboardContent.ContentEqual(msg) {
+		fmt.Printf("-> write: skipped (same payload)\n")
+		return nil
 	}
+	LastClipboardContent = &msg
+
+	switch msg.Format {
+	case FormatText:
+		clipboard.Write(clipboard.FmtText, data)
+	case FormatImage:
+		clipboard.Write(clipboard.FmtImage, data)
+	default:
+		return fmt.Errorf("format error: %s", msg.Format)
+	}
+
 	return nil
 }
