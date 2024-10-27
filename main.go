@@ -9,23 +9,12 @@ import (
 	"os"
 	"time"
 
+	"github.com/mohemohe/pubsubclip/clipboard"
 	"github.com/redis/go-redis/v9"
-	// "github.com/rs/xid"
 	"github.com/urfave/cli/v2"
-	"golang.design/x/clipboard"
-)
-
-type (
-	Msg struct {
-		Format   clipboard.Format
-		Payload  string
-		CopiedBy string
-		CopiedAt time.Time
-	}
 )
 
 var rdb *redis.Client
-var lastMsg Msg = Msg{}
 var copiedBy string
 var Version string
 
@@ -79,10 +68,7 @@ func main() {
 }
 
 func run(c *cli.Context) error {
-	err := clipboard.Init()
-	if err != nil {
-		panic(err)
-	}
+	_ = clipboard.Check()
 
 	rdb = redis.NewClient(&redis.Options{
 		Addr:     c.String("addr"),
@@ -94,7 +80,6 @@ func run(c *cli.Context) error {
 		panic(err)
 	}
 
-	// copiedBy = xid.New().String()
 	if hostname, err := os.Hostname(); err == nil {
 		copiedBy = hostname
 	} else {
@@ -110,50 +95,24 @@ func run(c *cli.Context) error {
 }
 
 func watchClip(c *cli.Context) {
-	ch1 := clipboard.Watch(context.TODO(), clipboard.FmtText)
-	ch2 := clipboard.Watch(context.TODO(), clipboard.FmtImage)
-	var msg = Msg{}
+	ch := clipboard.Watch(c, copiedBy)
+	msg := clipboard.Msg{}
+	lastPublishAt := time.Unix(0, 0)
 	for {
-		select {
-		case b, _ := <-ch1:
-			if c.Bool("verbose") {
-				fmt.Printf("copy: %s\n", string(b))
-			}
+		msg = <-ch
 
-			msg = Msg{
-				Format:   clipboard.FmtText,
-				Payload:  hex.EncodeToString(b),
-				CopiedBy: copiedBy,
-				CopiedAt: time.Now(),
-			}
-		case b, _ := <-ch2:
-			if c.Bool("verbose") {
-				fmt.Println("copy: [IMAGE]")
-			}
-			msg = Msg{
-				Format:   clipboard.FmtImage,
-				Payload:  hex.EncodeToString(b),
-				CopiedBy: copiedBy,
-				CopiedAt: time.Now(),
-			}
-		}
-
-		if lastMsg.Format == clipboard.FmtImage && time.Now().Before(lastMsg.CopiedAt.Add(3*time.Second)) {
+		if clipboard.LastClipboardContent.Format == clipboard.FormatImage && lastPublishAt.After(msg.CopiedAt.Add(3*time.Second)) {
 			fmt.Printf("-> publish: skipped (too early)\n")
-			lastMsg = msg
 			continue
 		}
 
-		if lastMsg.Format != msg.Format || lastMsg.Payload != msg.Payload {
-			lastMsg = msg
-			if b, err := json.Marshal(msg); err == nil {
-				rdb.Publish(context.TODO(), c.String("channel"), string(b))
-				fmt.Printf("-> publish: OK\n")
-			} else {
-				fmt.Printf("json marshal error: %v\n", err)
-			}
-		} else if c.Bool("verbose") {
-			fmt.Printf("-> publish: skipped (same payload)\n")
+		lastPublishAt = time.Now()
+
+		if b, err := json.Marshal(msg); err == nil {
+			rdb.Publish(context.TODO(), c.String("channel"), string(b))
+			fmt.Printf("-> publish: OK\n")
+		} else {
+			fmt.Printf("json marshal error: %v\n", err)
 		}
 	}
 }
@@ -161,35 +120,40 @@ func watchClip(c *cli.Context) {
 func watchRedis(c *cli.Context) {
 	s := rdb.Subscribe(context.TODO(), c.String("channel"))
 	ch := s.Channel()
-	msg := Msg{}
+	var msg clipboard.Msg
+	var lastSendMsg clipboard.Msg
 	for rMsg := range ch {
 		if err := json.Unmarshal([]byte(rMsg.Payload), &msg); err == nil {
 			if msg.CopiedBy == copiedBy {
+				if c.Bool("verbose") {
+					fmt.Printf("paste: from %s, skipped (copied by myself)\n", msg.CopiedBy)
+				}
 				continue
 			}
 
-			if msg.Format == clipboard.FmtImage && lastMsg.Format == clipboard.FmtImage && msg.CopiedAt.Before(lastMsg.CopiedAt.Add(3*time.Second)) {
+			println(msg.Format, clipboard.FormatImage)
+			println(lastSendMsg.Format, clipboard.FormatImage)
+			println(msg.CopiedAt.Format(time.RFC3339), lastSendMsg.CopiedAt.Add(3*time.Second).Format(time.RFC3339))
+
+			if msg.Format == clipboard.FormatImage && lastSendMsg.Format == clipboard.FormatImage && msg.CopiedAt.Before(lastSendMsg.CopiedAt.Add(3*time.Second)) {
 				fmt.Printf("paste: [IMAGE] from %s\n", msg.CopiedBy)
 				fmt.Printf("-> write: skipped (too early)\n")
 				continue
 			}
 
-			if lastMsg.Format != msg.Format || lastMsg.Payload != msg.Payload {
-				lastMsg = msg
-				if decoded, err := hex.DecodeString(msg.Payload); err == nil {
-					if c.Bool("verbose") {
-						if msg.Format == clipboard.FmtText {
-							fmt.Printf("paste: %s from %s\n", string(decoded), msg.CopiedBy)
-						} else if msg.Format == clipboard.FmtImage {
-							fmt.Printf("paste: [IMAGE] from %s\n", msg.CopiedBy)
-						}
+			lastSendMsg = msg
+
+			if decoded, err := hex.DecodeString(msg.Payload); err == nil {
+				if c.Bool("verbose") {
+					if msg.Format == clipboard.FormatText {
+						fmt.Printf("paste: %s from %s\n", string(decoded), msg.CopiedBy)
+					} else if msg.Format == clipboard.FormatImage {
+						fmt.Printf("paste: [IMAGE] from %s\n", msg.CopiedBy)
 					}
-					clipboard.Write(msg.Format, decoded)
-				} else {
-					fmt.Printf("error: %v\n", err)
 				}
-			} else if c.Bool("verbose") {
-				fmt.Printf("-> write: skipped (same payload)\n")
+				clipboard.Write(c, msg, decoded)
+			} else {
+				fmt.Printf("error: %v\n", err)
 			}
 		} else {
 			fmt.Printf("json unmarshal error: %v\n", err)
