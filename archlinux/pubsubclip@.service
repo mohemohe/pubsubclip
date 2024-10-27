@@ -7,6 +7,7 @@ Type=simple
 User=%i
 ExecStart=/usr/bin/pubsubclip $PUBSUBCLIP_ARGS
 EnvironmentFile=/etc/default/pubsubclip
+Environment=XDG_RUNTIME_DIR=/run/user/%U
 Restart=on-failure
 
 [Install]
